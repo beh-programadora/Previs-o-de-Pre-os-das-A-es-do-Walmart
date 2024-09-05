@@ -1,0 +1,24 @@
+
+### .gitignore
+
+```gitignore
+# Arquivos Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Dados
+data/
+*.csv
+
+# Modelos treinados
+*.h5
+
+# IDEs
+.vscode/
+.idea/
+
+# Ambiente virtual
+venv/
+env/
