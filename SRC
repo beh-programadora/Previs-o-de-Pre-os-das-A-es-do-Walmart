@@ -1,0 +1,101 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+import requests
+import io
+
+# URL do arquivo CSV
+url = 'https://drive.google.com/uc?id=13SQ1N3PZtieiaVr37aK5rA8mcuQYMEHA'
+
+# Carregar dados
+response = requests.get(url)
+data = io.StringIO(response.text)
+df = pd.read_csv(data)
+
+# Converter a coluna 'Date' para datetime e definir como índice
+df['Date'] = pd.to_datetime(df['Date'])
+df.set_index('Date', inplace=True)
+
+# Plotar os preços de fechamento
+plt.figure(figsize=(10,6))
+plt.plot(df['Close'], label='Preço de Fechamento')
+plt.title('Preços de Fechamento das Ações do Walmart (2000-2024)')
+plt.xlabel('Data')
+plt.ylabel('Preço de Fechamento (USD)')
+plt.legend()
+plt.show()
+
+# Dividir os dados em treino e teste
+train_size = int(len(df) * 0.8)
+train, test = df['Close'][:train_size], df['Close'][train_size:]
+
+# Modelo ARIMA
+model_arima = ARIMA(train, order=(5,1,0))
+arima_fit = model_arima.fit()
+
+# Previsão ARIMA
+arima_forecast = arima_fit.forecast(steps=len(test))
+
+# Visualização ARIMA
+plt.figure(figsize=(10,6))
+plt.plot(test.index, test, label='Real')
+plt.plot(test.index, arima_forecast, color='red', label='Previsão ARIMA')
+plt.title('Previsão ARIMA para Preços de Fechamento')
+plt.xlabel('Data')
+plt.ylabel('Preço de Fechamento (USD)')
+plt.legend()
+plt.show()
+
+# Preparação para o modelo LSTM
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_data = scaler.fit_transform(df['Close'].values.reshape(-1, 1))
+
+train_data = scaled_data[:train_size]
+test_data = scaled_data[train_size:]
+
+# Criar conjuntos de treino para LSTM
+def create_dataset(data, time_step=60):
+    X, y = [], []
+    for i in range(len(data) - time_step - 1):
+        X.append(data[i:(i + time_step), 0])
+        y.append(data[i + time_step, 0])
+    return np.array(X), np.array(y)
+
+time_step = 60
+X_train, y_train = create_dataset(train_data, time_step)
+X_test, y_test = create_dataset(test_data, time_step)
+
+# Redimensionar os dados para [samples, time_steps, features]
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+# Construir o modelo LSTM
+model_lstm = Sequential()
+model_lstm.add(LSTM(50, return_sequences=True, input_shape=(time_step, 1)))
+model_lstm.add(LSTM(50, return_sequences=False))
+model_lstm.add(Dense(25))
+model_lstm.add(Dense(1))
+
+# Compilar o modelo
+model_lstm.compile(optimizer='adam', loss='mean_squared_error')
+
+# Treinar o modelo
+model_lstm.fit(X_train, y_train, batch_size=64, epochs=10)
+
+# Fazer previsões
+predictions = model_lstm.predict(X_test)
+predictions = scaler.inverse_transform(predictions)
+
+# Visualização LSTM
+plt.figure(figsize=(10,6))
+plt.plot(df.index[-len(test):], df['Close'][-len(test):], label='Real')
+plt.plot(df.index[-len(predictions):], predictions, color='red', label='Previsão LSTM')
+plt.title('Previsão LSTM para Preços de Fechamento')
+plt.xlabel('Data')
+plt.ylabel('Preço de Fechamento (USD)')
+plt.legend()
+plt.show()
